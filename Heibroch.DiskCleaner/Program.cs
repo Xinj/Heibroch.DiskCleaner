@@ -50,6 +50,30 @@ namespace Heibroch.DiskCleaner
                     TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
                     continue;
                 }
+
+                if (fileName.StartsWith("dev") && (fileName.EndsWith(".tmp")))
+                {
+                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    continue;
+                }
+
+                if (fileName.StartsWith("DEL") && (fileName.EndsWith(".tmp")))
+                {
+                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    continue;
+                }
+
+                if (fileName.StartsWith("Report") && fileName.EndsWith(".diagsession"))
+                {
+                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    continue;
+                }
+
+                if (fileName.StartsWith("version-"))
+                {
+                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    continue;
+                }
             }
 
             Console.WriteLine("Cleaning up directories...");
@@ -104,12 +128,14 @@ namespace Heibroch.DiskCleaner
         {
             try
             {
-                File.Delete(path);
+                Directory.Delete(path, true);
                 deletedDirectoryCount++;
+                Console.WriteLine("Deleted directory: " + path);
             }
             catch (Exception)
             {
                 failedDirectoryDeleteCount++;
+                Console.WriteLine("Deletion of directory failed: " + path);
             }
         }
 
@@ -119,10 +145,12 @@ namespace Heibroch.DiskCleaner
             {
                 File.Delete(path);
                 deletedFileCount++;
+                Console.WriteLine("Deleted file: " + path);
             }
             catch (Exception)
             {
                 failedFileDeleteCount++;
+                Console.WriteLine("Deletion of file failed: " + path);
             }
         }
     }
