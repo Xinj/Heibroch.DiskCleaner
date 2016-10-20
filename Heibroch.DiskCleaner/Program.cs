@@ -5,6 +5,15 @@ namespace Heibroch.DiskCleaner
 {
     class Program
     {
+        private static int currentlyInUseDirectoryCount;
+        private static int currentlyInUseFileCount;
+        private static int accessDeniedFileCount;
+        private static long spaceFreed = 0;
+        private static int deletedFileCount = 0;
+        private static int failedFileDeleteCount = 0;
+        private static int deletedDirectoryCount = 0;
+        private static int failedDirectoryDeleteCount = 0;
+
         static void Main(string[] args)
         {
             Console.WriteLine("Cleaning up...");
@@ -19,66 +28,62 @@ namespace Heibroch.DiskCleaner
 
             var files = Directory.GetFiles(tempPath);
             var directories = Directory.GetDirectories(tempPath);
-            long spaceFreed = 0;
+
 
             Console.WriteLine("Cleaning up files...");
-            int deletedFiles = 0;
-            int failedDeletedFiles = 0;
             for (int i = 0; i < files.Length; i++)
             {
                 var fileName = Path.GetFileName(files[i]);
                 if (fileName.StartsWith("MAT_"))
                 {
-                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    TryDeleteFile(files[i]);
                     continue;
                 }
 
                 if (fileName.StartsWith("~") && fileName.EndsWith(".TMP"))
                 {
-                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    TryDeleteFile(files[i]);
                     continue;
                 }
 
                 if (fileName.EndsWith("_Monitor_log") || fileName.EndsWith("_Monitor_log.txt"))
                 {
-                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    TryDeleteFile(files[i]);
                     continue;
                 }
 
                 if (fileName.StartsWith("CVR") && (fileName.EndsWith(".tmp.cvr") || fileName.EndsWith(".tmp")))
                 {
-                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    TryDeleteFile(files[i]);
                     continue;
                 }
 
                 if (fileName.StartsWith("dev") && (fileName.EndsWith(".tmp")))
                 {
-                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    TryDeleteFile(files[i]);
                     continue;
                 }
 
                 if (fileName.StartsWith("DEL") && (fileName.EndsWith(".tmp")))
                 {
-                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    TryDeleteFile(files[i]);
                     continue;
                 }
 
                 if (fileName.StartsWith("Report") && fileName.EndsWith(".diagsession"))
                 {
-                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    TryDeleteFile(files[i]);
                     continue;
                 }
 
                 if (fileName.StartsWith("version-"))
                 {
-                    TryDeleteFile(files[i], ref deletedFiles, ref failedDeletedFiles);
+                    TryDeleteFile(files[i]);
                     continue;
                 }
             }
 
             Console.WriteLine("Cleaning up directories...");
-            int deletedDirectories = 0;
-            int failedDeletedDirectories = 0;
             for (int i = 0; i < directories.Length; i++)
             {
 
@@ -87,69 +92,84 @@ namespace Heibroch.DiskCleaner
                 var directoryName = directories[i].Substring(lastIndexOf, remainingLength);
                 if (directoryName.StartsWith("Report."))
                 {
-                    TryDeleteDirectory(directories[i], ref deletedDirectories, ref failedDeletedDirectories);
+                    TryDeleteDirectory(directories[i]);
                     continue;
                 }
 
                 if (directoryName.StartsWith("TCD") && directoryName.EndsWith(".tmp"))
                 {
-                    TryDeleteDirectory(directories[i], ref deletedDirectories, ref failedDeletedDirectories);
+                    TryDeleteDirectory(directories[i]);
                     continue;
                 }
             }
 
-            Console.WriteLine("Deleted files: {0}", deletedFiles);
-            Console.WriteLine("Failed to delete file count: {0} ", failedDeletedFiles);
-            Console.WriteLine("Deleted directories: {0}", deletedDirectories);
-            Console.WriteLine("Failed to delete directory count: {0} ", failedDeletedDirectories);
-            Console.WriteLine("Space freed: {0} bytes", spaceFreed);
+            Console.WriteLine("Deleted files: {0}", deletedFileCount);
+            Console.WriteLine("Failed to delete file count: {0} ", failedFileDeleteCount);
+            Console.WriteLine("Failed to delete file due to access rights: {0}", accessDeniedFileCount);
+            Console.WriteLine("Deleted directories: {0}", deletedDirectoryCount);
+            Console.WriteLine("Failed to delete directory count: {0} ", failedDirectoryDeleteCount);
+            Console.WriteLine("Space freed: {0} MB", spaceFreed/1024/1024);
             Console.Read();
         }
 
-        public static long GetDirectorySize(DirectoryInfo d)
-        {
-            long size = 0;
-            // Add file sizes.
-            FileInfo[] fis = d.GetFiles();
-            foreach (FileInfo fi in fis)
-            {
-                size += fi.Length;
-            }
-            // Add subdirectory sizes.
-            DirectoryInfo[] dis = d.GetDirectories();
-            foreach (DirectoryInfo di in dis)
-            {
-                size += GetDirectorySize(di);
-            }
-            return size;
-        }
-
-        private static void TryDeleteDirectory(string path, ref int deletedDirectoryCount, ref int failedDirectoryDeleteCount)
+        private static void TryDeleteDirectory(string path)
         {
             try
             {
+                var rootDirectoryInfo = new DirectoryInfo(path);
+
+                foreach (var directoryInfo in rootDirectoryInfo.GetDirectories())
+                {
+                    TryDeleteDirectory(directoryInfo.FullName);
+                }
+
+                foreach (var fileInfo in rootDirectoryInfo.GetFiles())
+                {
+                    TryDeleteFile(fileInfo.FullName);
+                }
+                
                 Directory.Delete(path, true);
                 deletedDirectoryCount++;
                 Console.WriteLine("Deleted directory: " + path);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 failedDirectoryDeleteCount++;
+                if (ex.Message.Contains("being used by another"))
+                {
+                    currentlyInUseDirectoryCount++;
+                    return;
+                }
                 Console.WriteLine("Deletion of directory failed: " + path);
             }
         }
 
-        private static void TryDeleteFile(string path, ref int deletedFileCount, ref int failedFileDeleteCount)
+        private static void TryDeleteFile(string path)
         {
             try
             {
+                var fileInfo = new FileInfo(path);
+                var fileSize = fileInfo.Length;
+
                 File.Delete(path);
                 deletedFileCount++;
+                
                 Console.WriteLine("Deleted file: " + path);
+                spaceFreed += fileSize;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 failedFileDeleteCount++;
+                if (ex.Message.Contains("being used by another"))
+                {
+                    currentlyInUseFileCount++;
+                    return;
+                }
+                if (ex.Message.Contains("is denied"))
+                {
+                    accessDeniedFileCount++;
+                    return;
+                }
                 Console.WriteLine("Deletion of file failed: " + path);
             }
         }
